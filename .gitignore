@@ -3,3 +3,4 @@ Old/
 __pycache__/
 *.dat
 *.loc
+Package/
