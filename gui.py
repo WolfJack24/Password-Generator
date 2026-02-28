@@ -10,7 +10,9 @@ from customtkinter import (
     CTkCheckBox,
     CTkLabel,
     CTkButton,
-    CTkInputDialog
+    CTkInputDialog,
+    CTkToplevel,
+    CTkScrollableFrame
 )
 
 from dialogs import PasswordDialog, MessageBox
@@ -141,7 +143,7 @@ class App(CTk):
     @staticmethod
     def _entropy_score(password_length: int, characters: str) -> str:
         if not characters:
-            raise ValueError("Characters cannot be empty")
+            return "0 bits - Invalid"
 
         entropy = floor(password_length * log2(len(characters)))
 
@@ -200,9 +202,23 @@ class App(CTk):
     def _make_new_vault(self) -> None:
         dialog = CTkInputDialog(title="New Vault Name", text="Enter new vault name or 'n' for default vault")
         vault_name = dialog.get_input()
+        if not vault_name:
+            return
 
         dialog = PasswordDialog(title="New Vault Password", text="Enter new vault password")
         master_password = dialog.get_input()
+        if not master_password:
+            return
+
+        dialog = PasswordDialog(title="Confirm Password", text="Confirm Master Password")
+        confirm_password = dialog.get_input()
+        if not confirm_password:
+            return
+
+        if master_password != confirm_password:
+            MessageBox(master=self, title="Error", message="Passwords do not match", icon="warning")
+            return
+
         if vault_name == "n":
             self.vault.create_vault(master_password)
         else:
@@ -216,10 +232,13 @@ class App(CTk):
         current_password = self.password.get()
 
         if not current_password:
+            MessageBox(master=self, title="Error", message="No password generated.", icon="warning")
             return
 
         dialog = CTkInputDialog(title="Website", text="Enter the website for this password")
         website = dialog.get_input()
+        if not website:
+            return
 
         dialog = PasswordDialog(title="Password", text="Enter Master Password")
         master_password = dialog.get_input()
@@ -232,8 +251,142 @@ class App(CTk):
 
     def _load_saved_passwords(self) -> None:
         dialog = PasswordDialog(title="Password", text="Enter Master Password")
-        master_password = dialog.get_input()
 
-        passwords: dict = self.vault.load_vault(master_password)
-        # TODO: Make something decent
-        print(passwords.keys())
+        master_password = dialog.get_input()
+        if not master_password:
+            return
+
+        try:
+            passwords: dict = self.vault.load_vault(master_password)
+            VaultViewer(self, passwords)
+        except Exception as e:
+            MessageBox(master=self, title="Error", message=str(e), icon="warning")
+
+class VaultViewer(CTkToplevel):
+    def __init__(self, master, passwords: dict) -> None:
+        super().__init__(master)
+
+        self.title("Saved Passwords")
+        self.geometry("500x350")
+        self.resizable(False, False)
+
+        self.passwords = passwords
+        self.showing_password = False
+        self.current_website = None
+
+        self.grid_columnconfigure((0, 1), weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        self.website_frame = CTkScrollableFrame(self)
+        self.website_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+
+        self.details_frame = CTkFrame(self)
+        self.details_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+
+        self.selected_label = CTkLabel(self.details_frame, text="Select a Website")
+        self.selected_label.pack(pady=(20, 10))
+
+        self.password_entry = CTkEntry(self.details_frame, show="*")
+        self.password_entry.pack(padx=20, pady=5, fill="x")
+
+        self.toggle_button = CTkButton(
+            self.details_frame,
+            text="Show",
+            width=100,
+            command=self._toggle_password
+        )
+        self.toggle_button.pack(pady=(5, 5))
+
+        self.copy_button = CTkButton(
+            self.details_frame,
+            text="Copy Password",
+            command=self._copy_password
+        )
+        self.copy_button.pack(pady=10)
+
+        self.delete_button = CTkButton(
+            self.details_frame,
+            text="Delete Password",
+            fg_color="#8B0000",
+            hover_color="#5A0000",
+            command=self._delete_password
+        )
+        self.delete_button.pack(pady=(5, 10))
+
+        self._populate_websites()
+
+    def _populate_websites(self) -> None:
+        for website in self.passwords:
+            btn = CTkButton(
+                self.website_frame,
+                text=website,
+                command= lambda w = website: self._show_password(w)
+            )
+            btn.pack(padx=5, pady=5, fill="x")
+
+    def _show_password(self, website: str) -> None:
+        self.current_website = website
+        password = self.passwords[website]
+
+        self.selected_label.configure(text=website)
+
+        self.password_entry.delete(0, "end")
+        self.password_entry.insert(0, password)
+
+        self.password_entry.configure(show="*")
+        self.toggle_button.configure(text="Show")
+        self.showing_password = False
+
+    def _copy_password(self) -> None:
+        password = self.password_entry.get()
+
+        self.clipboard_clear()
+        self.clipboard_append(password)
+
+    def _toggle_password(self):
+        if self.showing_password:
+            self.password_entry.configure(show="*")
+            self.toggle_button.configure(text="Show")
+            self.showing_password = False
+        else:
+            self.password_entry.configure(show="")
+            self.toggle_button.configure(text="Hide")
+            self.showing_password = True
+
+    def _delete_password(self) -> None:
+        if not self.current_website:
+            return
+
+        confirm = MessageBox(
+            master=self,
+            title="Confirm Delete",
+            message=f"Delete password for '{self.current_website}'?'",
+            icon="warning"
+        )
+        if confirm.get() != "OK":
+            return
+
+        try:
+            dialog = PasswordDialog(title="Confirm Master Password",
+                                    text="Enter Master Password to Delete")
+            master_password = dialog.get_input()
+            if not master_password:
+                return
+
+            self.master.vault.delete_password(master_password, self.current_website)
+
+            del self.passwords[self.current_website]
+
+            self._refresh_website_list()
+
+            self.password_entry.delete(0, "end")
+            self.selected_label.configure(text="Select a website")
+            self.current_website = None
+        except Exception as e:
+            MessageBox(master=self, title="Error", message=str(e), icon="warning")
+
+    def _refresh_website_list(self) -> None:
+        for widget in self.website_frame.winfo_children():
+            widget.destroy()
+
+        self._populate_websites()

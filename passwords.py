@@ -91,6 +91,16 @@ class PasswordVault:
         with open(self.file_path, "wb") as file:
             file.write(salt + encrypted)
 
+    def delete_password(self, master_password: str, website: str) -> None:
+        vault_data = self.load_vault(master_password)
+
+        if website not in vault_data:
+            raise ValueError("Website not found in vault")
+
+        del vault_data[website]
+
+        self.save_vault(master_password, vault_data)
+
 
     # ---------- ADD PASSWORD ----------
     def add_password(self, master_password: str, site: str, password: str) -> None:
