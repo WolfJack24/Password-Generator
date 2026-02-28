@@ -1,0 +1,14 @@
+cffi==2.0.0
+cryptography==46.0.5
+CTkMessagebox==2.7
+customtkinter==5.2.2
+darkdetect==0.8.0
+jaraco.classes==3.4.0
+jaraco.context==6.1.0
+jaraco.functools==4.4.0
+more-itertools==10.8.0
+packaging==26.0
+pillow==12.1.1
+pycparser==3.0
+pywin32-ctypes==0.2.3
+zxcvbn==4.5.0

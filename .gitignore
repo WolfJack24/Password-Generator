@@ -1,0 +1,5 @@
+.idea/
+Old/
+__pycache__/
+*.dat
+*.loc
